@@ -306,7 +306,6 @@ export default async (req) => {
     if (
       !dealTitle ||
       !clientName ||
-      !clientEmail ||
       !closedDate ||
       !Number.isFinite(value) ||
       value < 0
@@ -314,7 +313,7 @@ export default async (req) => {
       return json(
         {
           error:
-            'Deal title, client name, client email, valid value, and date are required.',
+            'Deal title, client name, valid value, and date are required.',
         },
         400
       );
@@ -575,9 +574,12 @@ export default async (req) => {
       }
 
       if (d.ownerId === user.id) {
-        const emailKey = String(d.clientEmail || '').toLowerCase();
-        if (!clientMap.has(emailKey)) {
-          clientMap.set(emailKey, {
+        const emailClean = String(d.clientEmail || '').trim().toLowerCase();
+        const clientKey =
+          emailClean ||
+          `${String(d.clientName || '').trim().toLowerCase()}::${String(d.clientCompany || '').trim().toLowerCase()}`;
+        if (!clientMap.has(clientKey)) {
+          clientMap.set(clientKey, {
             clientName: d.clientName,
             clientEmail: d.clientEmail,
             clientCompany: d.clientCompany,
@@ -587,7 +589,7 @@ export default async (req) => {
             statuses: new Set(),
           });
         }
-        const cEntry = clientMap.get(emailKey);
+        const cEntry = clientMap.get(clientKey);
         if (d.status === 'Closed Won') {
           cEntry.totalValue += converted;
         }

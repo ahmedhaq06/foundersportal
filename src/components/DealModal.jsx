@@ -174,14 +174,13 @@ export default function DealModal({
             </div>
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-                Client Email *
+                Client Email
               </label>
               <input
                 type="email"
-                required
                 value={form.clientEmail}
                 onChange={(e) => setForm({ ...form, clientEmail: e.target.value })}
-                placeholder="client@company.com"
+                placeholder="client@company.com (optional)"
                 className="w-full rounded-xl border border-white/10 bg-[#14141A] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#D4AF37]/60 focus:outline-none"
               />
             </div>

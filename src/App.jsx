@@ -816,24 +816,26 @@ export default function App() {
                                   </span>
                                 ) : null}
                               </div>
-                              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
-                                <span>{d.clientEmail}</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    copyEmail(d.clientEmail);
-                                  }}
-                                  title="Copy email"
-                                  className="rounded p-0.5 text-zinc-500 hover:text-[#D4AF37]"
-                                >
-                                  {copiedEmail === d.clientEmail ? (
-                                    <Check className="h-3 w-3 text-emerald-400" />
-                                  ) : (
-                                    <Copy className="h-3 w-3" />
-                                  )}
-                                </button>
-                              </div>
+                              {d.clientEmail && (
+                                <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
+                                  <span>{d.clientEmail}</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyEmail(d.clientEmail);
+                                    }}
+                                    title="Copy email"
+                                    className="rounded p-0.5 text-zinc-500 hover:text-[#D4AF37]"
+                                  >
+                                    {copiedEmail === d.clientEmail ? (
+                                      <Check className="h-3 w-3 text-emerald-400" />
+                                    ) : (
+                                      <Copy className="h-3 w-3" />
+                                    )}
+                                  </button>
+                                </div>
+                              )}
                             </td>
                             <td className="px-4 py-4 font-mono-num">
                               <div className="text-white font-semibold">
@@ -1026,29 +1028,33 @@ export default function App() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/6">
-                    {(analytics?.clients || []).map((c) => (
+                    {(analytics?.clients || []).map((c, idx) => (
                       <tr
-                        key={c.clientEmail}
+                        key={`${c.clientEmail || c.clientName}-${idx}`}
                         className="hover:bg-white/[0.02] transition"
                       >
                         <td className="px-6 py-3.5 font-medium text-white">
                           {c.clientName}
                         </td>
                         <td className="px-4 py-3.5 text-zinc-300">
-                          <div className="flex items-center gap-1.5">
-                            <span>{c.clientEmail}</span>
-                            <button
-                              type="button"
-                              onClick={() => copyEmail(c.clientEmail)}
-                              className="rounded p-0.5 text-zinc-500 hover:text-[#D4AF37] cursor-pointer"
-                            >
-                              {copiedEmail === c.clientEmail ? (
-                                <Check className="h-3 w-3 text-emerald-400" />
-                              ) : (
-                                <Copy className="h-3 w-3" />
-                              )}
-                            </button>
-                          </div>
+                          {c.clientEmail ? (
+                            <div className="flex items-center gap-1.5">
+                              <span>{c.clientEmail}</span>
+                              <button
+                                type="button"
+                                onClick={() => copyEmail(c.clientEmail)}
+                                className="rounded p-0.5 text-zinc-500 hover:text-[#D4AF37] cursor-pointer"
+                              >
+                                {copiedEmail === c.clientEmail ? (
+                                  <Check className="h-3 w-3 text-emerald-400" />
+                                ) : (
+                                  <Copy className="h-3 w-3" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-500">—</span>
+                          )}
                         </td>
                         <td className="px-4 py-3.5 text-zinc-400">
                           {c.clientCompany || '—'}

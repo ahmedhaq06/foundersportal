@@ -257,9 +257,9 @@ app.post('/api/deals', requireAuth, (req, res) => {
     ? b.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 6)
     : [];
 
-  if (!dealTitle || !clientName || !clientEmail || !closedDate || !Number.isFinite(value) || value < 0) {
+  if (!dealTitle || !clientName || !closedDate || !Number.isFinite(value) || value < 0) {
     return res.status(400).json({
-      error: 'Deal title, client name, client email, valid value, and date are required.',
+      error: 'Deal title, client name, valid value, and date are required.',
     });
   }
 
@@ -602,9 +602,12 @@ app.get('/api/analytics', requireAuth, (req, res) => {
 
     // Client directory is personal to the logged-in user's own business
     if (d.owner_id === req.user.id) {
-      const emailKey = String(d.client_email || '').toLowerCase();
-      if (!clientMap.has(emailKey)) {
-        clientMap.set(emailKey, {
+      const emailClean = String(d.client_email || '').trim().toLowerCase();
+      const clientKey =
+        emailClean ||
+        `${String(d.client_name || '').trim().toLowerCase()}::${String(d.client_company || '').trim().toLowerCase()}`;
+      if (!clientMap.has(clientKey)) {
+        clientMap.set(clientKey, {
           clientName: d.client_name,
           clientEmail: d.client_email,
           clientCompany: d.client_company,
@@ -614,7 +617,7 @@ app.get('/api/analytics', requireAuth, (req, res) => {
           statuses: new Set(),
         });
       }
-      const cEntry = clientMap.get(emailKey);
+      const cEntry = clientMap.get(clientKey);
       if (d.status === 'Closed Won') {
         cEntry.totalValue += converted;
       }
