@@ -280,6 +280,17 @@ export default async (req) => {
         }
         return true;
       })
+      .map((d) => {
+        const val = Number(d.value);
+        const commPct = Number(d.commissionPercent) || 0;
+        const commAmt = val * (commPct / 100);
+        return {
+          ...d,
+          commissionPercent: commPct,
+          commissionAmount: commAmt,
+          totalValue: val + commAmt,
+        };
+      })
       .sort(
         (a, b) =>
           b.closedDate.localeCompare(a.closedDate) || b.id - a.id
@@ -295,6 +306,16 @@ export default async (req) => {
     const clientEmail = String(b.clientEmail || '').trim();
     const clientCompany = String(b.clientCompany || '').trim();
     const value = Number(b.value);
+    const commissionPercent = Math.min(
+      100,
+      Math.max(
+        0,
+        Number.isFinite(Number(b.commissionPercent))
+          ? Number(b.commissionPercent)
+          : 0
+      )
+    );
+    const commissionAmount = value * (commissionPercent / 100);
     const currency = ALLOWED_CURRENCIES.has(b.currency) ? b.currency : 'USD';
     const closedDate = String(b.closedDate || '').trim();
     const status = ALLOWED_STATUSES.has(b.status) ? b.status : 'Closed Won';
@@ -327,6 +348,9 @@ export default async (req) => {
       clientEmail,
       clientCompany,
       value,
+      commissionPercent,
+      commissionAmount,
+      totalValue: value + commissionAmount,
       currency,
       closedDate,
       status,
@@ -360,6 +384,16 @@ export default async (req) => {
 
     if (method === 'PATCH') {
       const b = await req.json().catch(() => ({}));
+      const nextValue =
+        b.value !== undefined && Number.isFinite(Number(b.value))
+          ? Number(b.value)
+          : Number(existing.value);
+      const nextCommPct =
+        b.commissionPercent !== undefined &&
+        Number.isFinite(Number(b.commissionPercent))
+          ? Math.min(100, Math.max(0, Number(b.commissionPercent)))
+          : Number(existing.commissionPercent) || 0;
+      const nextCommAmt = nextValue * (nextCommPct / 100);
       const updated = {
         ...existing,
         dealTitle:
@@ -378,10 +412,10 @@ export default async (req) => {
           b.clientCompany !== undefined
             ? String(b.clientCompany).trim()
             : existing.clientCompany,
-        value:
-          b.value !== undefined && Number.isFinite(Number(b.value))
-            ? Number(b.value)
-            : existing.value,
+        value: nextValue,
+        commissionPercent: nextCommPct,
+        commissionAmount: nextCommAmt,
+        totalValue: nextValue + nextCommAmt,
         currency: ALLOWED_CURRENCIES.has(b.currency)
           ? b.currency
           : existing.currency,
@@ -506,6 +540,7 @@ export default async (req) => {
         closedDeals: 0,
         pipelineDeals: 0,
         closedRevenue: 0,
+        closedCommissions: 0,
         pipelineValue: 0,
         avgDealSize: 0,
       };
@@ -516,12 +551,22 @@ export default async (req) => {
 
     for (const d of state.deals) {
       const owner = state.users.find((u) => u.id === d.ownerId);
-      const converted = convertCurrency(
-        Number(d.value),
+      const baseValue = Number(d.value);
+      const commPct = Number(d.commissionPercent) || 0;
+      const commValue = baseValue * (commPct / 100);
+      const convertedBase = convertCurrency(
+        baseValue,
         d.currency,
         displayCurrency,
         fxMap
       );
+      const convertedComm = convertCurrency(
+        commValue,
+        d.currency,
+        displayCurrency,
+        fxMap
+      );
+      const convertedTotal = convertedBase + convertedComm;
       const monthKey = (d.closedDate || '').slice(0, 7) || 'Unknown';
       if (!monthlyMap.has(monthKey)) {
         const byUser = {};
@@ -548,28 +593,29 @@ export default async (req) => {
       const uBucket = owner ? mEntry.byUser[owner.username] : null;
 
       if (d.status === 'Closed Won') {
-        combinedClosedRevenue += converted;
+        combinedClosedRevenue += convertedTotal;
         combinedClosedCount += 1;
-        mEntry.totalClosed += converted;
+        mEntry.totalClosed += convertedTotal;
         mEntry.totalCount += 1;
         if (uBucket) {
-          uBucket.closed += converted;
+          uBucket.closed += convertedTotal;
           uBucket.count += 1;
         }
         if (founderTotals[d.ownerId]) {
           founderTotals[d.ownerId].closedDeals += 1;
-          founderTotals[d.ownerId].closedRevenue += converted;
+          founderTotals[d.ownerId].closedRevenue += convertedTotal;
+          founderTotals[d.ownerId].closedCommissions += convertedComm;
         }
       } else if (d.status === 'In Negotiation' || d.status === 'Proposal') {
-        combinedPipelineValue += converted;
+        combinedPipelineValue += convertedTotal;
         combinedPipelineCount += 1;
-        mEntry.totalPipeline += converted;
+        mEntry.totalPipeline += convertedTotal;
         if (uBucket) {
-          uBucket.pipeline += converted;
+          uBucket.pipeline += convertedTotal;
         }
         if (founderTotals[d.ownerId]) {
           founderTotals[d.ownerId].pipelineDeals += 1;
-          founderTotals[d.ownerId].pipelineValue += converted;
+          founderTotals[d.ownerId].pipelineValue += convertedTotal;
         }
       }
 
@@ -591,7 +637,7 @@ export default async (req) => {
         }
         const cEntry = clientMap.get(clientKey);
         if (d.status === 'Closed Won') {
-          cEntry.totalValue += converted;
+          cEntry.totalValue += convertedTotal;
         }
         cEntry.dealCount += 1;
         if (d.closedDate > cEntry.lastDate) {
@@ -655,6 +701,9 @@ export default async (req) => {
       'Client Email',
       'Company',
       'Value',
+      'Commission %',
+      'Commission Amount',
+      'Total With Commission',
       'Currency',
       'Closed Date',
       'Status',
@@ -662,22 +711,28 @@ export default async (req) => {
     ];
     const lines = [
       headers.join(','),
-      ...rows.map((r) =>
-        [
+      ...rows.map((r) => {
+        const val = Number(r.value);
+        const commPct = Number(r.commissionPercent) || 0;
+        const commAmt = val * (commPct / 100);
+        return [
           r.id,
           r.dealTitle,
           r.clientName,
           r.clientEmail,
           r.clientCompany,
-          r.value,
+          val,
+          commPct,
+          commAmt,
+          val + commAmt,
           r.currency,
           r.closedDate,
           r.status,
           r.notes,
         ]
           .map(escapeCsv)
-          .join(',')
-      ),
+          .join(',');
+      }),
     ];
 
     return new Response(lines.join('\n'), {

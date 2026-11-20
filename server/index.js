@@ -66,13 +66,19 @@ function formatDealRow(row) {
   } catch {
     tags = [];
   }
+  const value = Number(row.value);
+  const commissionPercent = Number(row.commission_percent) || 0;
+  const commissionAmount = value * (commissionPercent / 100);
   return {
     id: row.id,
     dealTitle: row.deal_title,
     clientName: row.client_name,
     clientEmail: row.client_email,
     clientCompany: row.client_company,
-    value: Number(row.value),
+    value,
+    commissionPercent,
+    commissionAmount,
+    totalValue: value + commissionAmount,
     currency: row.currency,
     closedDate: row.closed_date,
     status: row.status,
@@ -248,6 +254,10 @@ app.post('/api/deals', requireAuth, (req, res) => {
   const clientEmail = String(b.clientEmail || '').trim();
   const clientCompany = String(b.clientCompany || '').trim();
   const value = Number(b.value);
+  const commissionPercent = Math.min(
+    100,
+    Math.max(0, Number.isFinite(Number(b.commissionPercent)) ? Number(b.commissionPercent) : 0)
+  );
   const currency = ALLOWED_CURRENCIES.has(b.currency) ? b.currency : 'USD';
   const closedDate = String(b.closedDate || '').trim();
   const status = ALLOWED_STATUSES.has(b.status) ? b.status : 'Closed Won';
@@ -266,8 +276,8 @@ app.post('/api/deals', requireAuth, (req, res) => {
   const result = db
     .prepare(
       `INSERT INTO deals
-       (deal_title, client_name, client_email, client_company, value, currency, closed_date, status, owner_id, split_percent, notes, tags)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 100, ?, ?)`
+       (deal_title, client_name, client_email, client_company, value, currency, closed_date, status, owner_id, split_percent, commission_percent, notes, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 100, ?, ?, ?)`
     )
     .run(
       dealTitle,
@@ -279,6 +289,7 @@ app.post('/api/deals', requireAuth, (req, res) => {
       closedDate,
       status,
       ownerId,
+      commissionPercent,
       notes,
       JSON.stringify(tags)
     );
@@ -318,6 +329,10 @@ app.patch('/api/deals/:id', requireAuth, (req, res) => {
     b.value !== undefined && Number.isFinite(Number(b.value))
       ? Number(b.value)
       : existing.value;
+  const commissionPercent =
+    b.commissionPercent !== undefined && Number.isFinite(Number(b.commissionPercent))
+      ? Math.min(100, Math.max(0, Number(b.commissionPercent)))
+      : Number(existing.commission_percent) || 0;
   const currency = ALLOWED_CURRENCIES.has(b.currency)
     ? b.currency
     : existing.currency;
@@ -333,7 +348,7 @@ app.patch('/api/deals/:id', requireAuth, (req, res) => {
     `UPDATE deals SET
        deal_title = ?, client_name = ?, client_email = ?, client_company = ?,
        value = ?, currency = ?, closed_date = ?, status = ?,
-       notes = ?, tags = ?, updated_at = datetime('now')
+       commission_percent = ?, notes = ?, tags = ?, updated_at = datetime('now')
      WHERE id = ?`
   ).run(
     dealTitle,
@@ -344,6 +359,7 @@ app.patch('/api/deals/:id', requireAuth, (req, res) => {
     currency,
     closedDate,
     status,
+    commissionPercent,
     notes,
     tags,
     id
@@ -535,6 +551,7 @@ app.get('/api/analytics', requireAuth, (req, res) => {
       closedDeals: 0,
       pipelineDeals: 0,
       closedRevenue: 0,
+      closedCommissions: 0,
       pipelineValue: 0,
       avgDealSize: 0,
     };
@@ -544,12 +561,22 @@ app.get('/api/analytics', requireAuth, (req, res) => {
   const clientMap = new Map();
 
   for (const d of deals) {
-    const converted = convertCurrency(
-      Number(d.value),
+    const baseValue = Number(d.value);
+    const commPct = Number(d.commission_percent) || 0;
+    const commValue = baseValue * (commPct / 100);
+    const convertedBase = convertCurrency(
+      baseValue,
       d.currency,
       displayCurrency,
       fxMap
     );
+    const convertedComm = convertCurrency(
+      commValue,
+      d.currency,
+      displayCurrency,
+      fxMap
+    );
+    const convertedTotal = convertedBase + convertedComm;
     const monthKey = (d.closed_date || '').slice(0, 7) || 'Unknown';
     if (!monthlyMap.has(monthKey)) {
       const byUser = {};
@@ -575,28 +602,29 @@ app.get('/api/analytics', requireAuth, (req, res) => {
     const uBucket = mEntry.byUser[d.owner_username];
 
     if (d.status === 'Closed Won') {
-      combinedClosedRevenue += converted;
+      combinedClosedRevenue += convertedTotal;
       combinedClosedCount += 1;
-      mEntry.totalClosed += converted;
+      mEntry.totalClosed += convertedTotal;
       mEntry.totalCount += 1;
       if (uBucket) {
-        uBucket.closed += converted;
+        uBucket.closed += convertedTotal;
         uBucket.count += 1;
       }
       if (founderTotals[d.owner_id]) {
         founderTotals[d.owner_id].closedDeals += 1;
-        founderTotals[d.owner_id].closedRevenue += converted;
+        founderTotals[d.owner_id].closedRevenue += convertedTotal;
+        founderTotals[d.owner_id].closedCommissions += convertedComm;
       }
     } else if (d.status === 'In Negotiation' || d.status === 'Proposal') {
-      combinedPipelineValue += converted;
+      combinedPipelineValue += convertedTotal;
       combinedPipelineCount += 1;
-      mEntry.totalPipeline += converted;
+      mEntry.totalPipeline += convertedTotal;
       if (uBucket) {
-        uBucket.pipeline += converted;
+        uBucket.pipeline += convertedTotal;
       }
       if (founderTotals[d.owner_id]) {
         founderTotals[d.owner_id].pipelineDeals += 1;
-        founderTotals[d.owner_id].pipelineValue += converted;
+        founderTotals[d.owner_id].pipelineValue += convertedTotal;
       }
     }
 
@@ -619,7 +647,7 @@ app.get('/api/analytics', requireAuth, (req, res) => {
       }
       const cEntry = clientMap.get(clientKey);
       if (d.status === 'Closed Won') {
-        cEntry.totalValue += converted;
+        cEntry.totalValue += convertedTotal;
       }
       cEntry.dealCount += 1;
       if (d.closed_date > cEntry.lastDate) {
@@ -690,6 +718,9 @@ app.get('/api/export/csv', requireAuth, (req, res) => {
     'Client Email',
     'Company',
     'Value',
+    'Commission %',
+    'Commission Amount',
+    'Total With Commission',
     'Currency',
     'Closed Date',
     'Status',
@@ -698,22 +729,28 @@ app.get('/api/export/csv', requireAuth, (req, res) => {
 
   const lines = [
     headers.join(','),
-    ...rows.map((r) =>
-      [
+    ...rows.map((r) => {
+      const val = Number(r.value);
+      const commPct = Number(r.commission_percent) || 0;
+      const commAmt = val * (commPct / 100);
+      return [
         r.id,
         r.deal_title,
         r.client_name,
         r.client_email,
         r.client_company,
-        r.value,
+        val,
+        commPct,
+        commAmt,
+        val + commAmt,
         r.currency,
         r.closed_date,
         r.status,
         r.notes,
       ]
         .map(escapeCsv)
-        .join(',')
-    ),
+        .join(',');
+    }),
   ];
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');

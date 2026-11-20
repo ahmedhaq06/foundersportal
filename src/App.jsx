@@ -458,9 +458,10 @@ export default function App() {
                     {formatMoney(myStats.closedRevenue, displayCurrency)}
                   </div>
                   <div className="mt-2 text-[11px] text-zinc-400">
-                    {myStats.closedDeals} closed •{' '}
-                    {formatMoney(myStats.pipelineValue, displayCurrency, true)}{' '}
-                    pipeline
+                    {myStats.closedDeals} closed
+                    {myStats.closedCommissions > 0
+                      ? ` • incl. +${formatMoney(myStats.closedCommissions, displayCurrency, true)} comm`
+                      : ` • ${formatMoney(myStats.pipelineValue, displayCurrency, true)} pipeline`}
                   </div>
                 </div>
 
@@ -473,9 +474,10 @@ export default function App() {
                     {formatMoney(otherStats.closedRevenue, displayCurrency)}
                   </div>
                   <div className="mt-2 text-[11px] text-zinc-400">
-                    {otherStats.closedDeals} closed •{' '}
-                    {formatMoney(otherStats.pipelineValue, displayCurrency, true)}{' '}
-                    pipeline
+                    {otherStats.closedDeals} closed
+                    {otherStats.closedCommissions > 0
+                      ? ` • incl. +${formatMoney(otherStats.closedCommissions, displayCurrency, true)} comm`
+                      : ` • ${formatMoney(otherStats.pipelineValue, displayCurrency, true)} pipeline`}
                   </div>
                 </div>
 
@@ -637,8 +639,11 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-white/6">
                       {deals.slice(0, 5).map((d) => {
+                        const commPct = Number(d.commissionPercent) || 0;
+                        const totalVal =
+                          d.totalValue ?? Number(d.value) * (1 + commPct / 100);
                         const normalized = convertValue(
-                          d.value,
+                          totalVal,
                           d.currency,
                           displayCurrency,
                           fxRates
@@ -663,8 +668,13 @@ export default function App() {
                             </td>
                             <td className="px-4 py-3.5 font-mono-num">
                               <div className="text-white font-medium">
-                                {formatMoney(d.value, d.currency)}
+                                {formatMoney(totalVal, d.currency)}
                               </div>
+                              {commPct > 0 && (
+                                <div className="text-[10px] text-[#E5C76B]">
+                                  {formatMoney(d.value, d.currency)} + {commPct}% comm
+                                </div>
+                              )}
                               {d.currency !== displayCurrency && (
                                 <div className="text-[10px] text-zinc-500">
                                   ≈ {formatMoney(normalized, displayCurrency)}
@@ -774,8 +784,11 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-white/6">
                       {filteredDeals.map((d) => {
+                        const commPct = Number(d.commissionPercent) || 0;
+                        const totalVal =
+                          d.totalValue ?? Number(d.value) * (1 + commPct / 100);
                         const normalized = convertValue(
-                          d.value,
+                          totalVal,
                           d.currency,
                           displayCurrency,
                           fxRates
@@ -839,8 +852,13 @@ export default function App() {
                             </td>
                             <td className="px-4 py-4 font-mono-num">
                               <div className="text-white font-semibold">
-                                {formatMoney(d.value, d.currency)}
+                                {formatMoney(totalVal, d.currency)}
                               </div>
+                              {commPct > 0 && (
+                                <div className="text-[10px] text-[#E5C76B]">
+                                  {formatMoney(d.value, d.currency)} + {commPct}% comm
+                                </div>
+                              )}
                               {d.currency !== displayCurrency && (
                                 <div className="text-[10px] text-zinc-500">
                                   ≈ {formatMoney(normalized, displayCurrency)}

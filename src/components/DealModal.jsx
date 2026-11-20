@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
-import { apiFetch, CURRENCY_META } from '../lib/api';
+import { apiFetch, CURRENCY_META, formatMoney } from '../lib/api';
 
 const STATUSES = ['Closed Won', 'In Negotiation', 'Proposal', 'Churned'];
 
@@ -18,6 +18,7 @@ export default function DealModal({
     clientEmail: '',
     clientCompany: '',
     value: '',
+    commissionPercent: '0',
     currency: 'USD',
     closedDate: new Date().toISOString().slice(0, 10),
     status: 'Closed Won',
@@ -39,6 +40,7 @@ export default function DealModal({
         clientEmail: deal.clientEmail || '',
         clientCompany: deal.clientCompany || '',
         value: String(deal.value ?? ''),
+        commissionPercent: String(deal.commissionPercent ?? 0),
         currency: deal.currency || 'USD',
         closedDate: deal.closedDate || new Date().toISOString().slice(0, 10),
         status: deal.status || 'Closed Won',
@@ -52,6 +54,7 @@ export default function DealModal({
         clientEmail: '',
         clientCompany: '',
         value: '',
+        commissionPercent: '0',
         currency: 'USD',
         closedDate: new Date().toISOString().slice(0, 10),
         status: 'Closed Won',
@@ -62,6 +65,11 @@ export default function DealModal({
   }, [open, deal]);
 
   if (!open) return null;
+
+  const numericValue = Number(form.value) || 0;
+  const numericCommPct = Math.min(100, Math.max(0, Number(form.commissionPercent) || 0));
+  const commissionAmount = numericValue * (numericCommPct / 100);
+  const totalWithCommission = numericValue + commissionAmount;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -74,6 +82,7 @@ export default function DealModal({
         clientEmail: form.clientEmail,
         clientCompany: form.clientCompany,
         value: Number(form.value),
+        commissionPercent: numericCommPct,
         currency: form.currency,
         closedDate: form.closedDate,
         status: form.status,
@@ -186,7 +195,7 @@ export default function DealModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1.5">
                 Company
@@ -199,22 +208,6 @@ export default function DealModal({
                 }
                 placeholder="Company name"
                 className="w-full rounded-xl border border-white/10 bg-[#14141A] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#D4AF37]/60 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1.5">
-                Deal Value *
-              </label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                required
-                value={form.value}
-                onChange={(e) => setForm({ ...form, value: e.target.value })}
-                placeholder="5000"
-                className="font-mono-num w-full rounded-xl border border-white/10 bg-[#14141A] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#D4AF37]/60 focus:outline-none"
               />
             </div>
 
@@ -235,6 +228,59 @@ export default function DealModal({
               </select>
             </div>
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                Deal Value *
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                required
+                value={form.value}
+                onChange={(e) => setForm({ ...form, value: e.target.value })}
+                placeholder="5000"
+                className="font-mono-num w-full rounded-xl border border-white/10 bg-[#14141A] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#D4AF37]/60 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-zinc-400 mb-1.5">
+                Commission %
+              </label>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                max="100"
+                value={form.commissionPercent}
+                onChange={(e) =>
+                  setForm({ ...form, commissionPercent: e.target.value })
+                }
+                placeholder="0"
+                className="font-mono-num w-full rounded-xl border border-white/10 bg-[#14141A] px-3.5 py-2.5 text-sm text-white placeholder:text-zinc-600 focus:border-[#D4AF37]/60 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {numericValue > 0 && (
+            <div className="rounded-xl border border-[#D4AF37]/20 bg-[#D4AF37]/6 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-zinc-400">
+                Commission (+{numericCommPct}%):{' '}
+                <span className="font-mono-num text-[#E5C76B]">
+                  +{formatMoney(commissionAmount, form.currency)}
+                </span>
+              </span>
+              <span className="font-medium text-zinc-200">
+                Total Closed:{' '}
+                <span className="font-mono-num font-semibold text-white">
+                  {formatMoney(totalWithCommission, form.currency)}
+                </span>
+              </span>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

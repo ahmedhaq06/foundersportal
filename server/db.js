@@ -50,6 +50,7 @@ export function getDb() {
       status TEXT NOT NULL DEFAULT 'Closed Won',
       owner_id INTEGER NOT NULL REFERENCES users(id),
       split_percent INTEGER NOT NULL DEFAULT 50,
+      commission_percent REAL NOT NULL DEFAULT 0,
       notes TEXT NOT NULL DEFAULT '',
       tags TEXT NOT NULL DEFAULT '[]',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -73,6 +74,13 @@ export function getDb() {
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
+
+  const dealCols = db.prepare('PRAGMA table_info(deals)').all();
+  if (!dealCols.some((c) => c.name === 'commission_percent')) {
+    db.exec(
+      'ALTER TABLE deals ADD COLUMN commission_percent REAL NOT NULL DEFAULT 0;'
+    );
+  }
 
   seedIfEmpty(db);
   dbInstance = db;
